@@ -6,20 +6,25 @@
 
 ## Figure 2 ####
 
-Fig2 <- Canada_daily %>% 
+# Code below does not produce legend; need to change show.legend to true once
+# and then splice the legend into the final output
+
+Fig2_data <- Canada_daily %>% 
   filter(!is.na(CMATYPE), Housing == TRUE) %>% 
   group_by(Date, CMATYPE) %>% 
   summarise(Listings = n())
 
-Fig2col <- c("#59157c", "#9ebcda", "#0c316b")
+Fig2_col <- c("#59157c", "#9ebcda", "#0c316b")
 
-Fig2 %>% 
+Fig2_panel_a <- 
+  Fig2_data %>% 
   filter(Date <= "2018-12-31") %>% 
   ggplot() +
-  geom_line(aes(x = Date, y = Listings/Listings[Date == "2016-09-01"]*100, color = CMATYPE), lwd = 1.8, show.legend = FALSE)+
+  geom_line(aes(x = Date, y = Listings/Listings[Date == "2016-09-01"]*100,
+                color = CMATYPE), lwd = 1.8, show.legend = FALSE)+
   xlab("Date") +
   ylab("Indexed active daily listings (September 1, 2016 = 100)")+
-  scale_color_manual(name = "Region", values = Fig2col)+
+  scale_color_manual(name = "Region", values = Fig2_col)+
   theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
         text=element_text(size=10),
         axis.text = element_text(size = 10),
@@ -29,13 +34,15 @@ Fig2 %>%
         panel.background=element_blank(),
         axis.line = element_line(size = .09, color = "grey10"))
 
-Fig2 %>% 
+Fig2_panel_b <- 
+  Fig2_data %>% 
   filter(Date <= "2018-12-31") %>% 
   ggplot() +
-  geom_line(aes(x = Date, y = Listings, color = CMATYPE), lwd = 1.8, show.legend = FALSE)+
+  geom_line(aes(x = Date, y = Listings, color = CMATYPE), lwd = 1.8,
+            show.legend = FALSE) +
   xlab("Date") +
   ylab("Active daily listings")+
-  scale_color_manual(name = "Region", values = Fig2col)+
+  scale_color_manual(name = "Region", values = Fig2_col)+
   scale_y_continuous(labels=scales::comma_format())+
   theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
         text=element_text(size=10),
@@ -46,60 +53,20 @@ Fig2 %>%
         panel.background=element_blank(),
         axis.line = element_line(size = .09, color = "grey10"))
 
-grid.arrange(a, b, ncol = 2)
+figure_2 <- grid.arrange(Fig2_panel_a, Fig2_panel_b, ncol = 2)
+rm(Fig2_data, Fig2_col, Fig2_panel_a, Fig2_panel_b)
 
-#Visual 3 - donut chart
-Fig3_MTV <- Candaa_daily_red4 %>% 
-  ungroup() %>% 
-  filter(CMANAME %in% c("Montréal", "Toronto", "Vancouver")) %>% 
-  group_by(CMANAME, Date) %>%
-  summarise(rev = sum(Price[Status == "R"]), n = n()) %>% 
-  group_by(CMANAME) %>% 
-  summarise(rev = sum(rev), n = mean(n)) %>% 
-  rename(place = CMANAME)
-Fig3_other <- Candaa_daily_red4 %>% 
-  ungroup() %>% 
-  filter(!CMANAME %in% c("Montréal", "Toronto", "Vancouver")) %>% 
-  group_by(CMATYPE, Date) %>%
-  summarise(rev = sum(Price[Status == "R"]), n = n())%>% 
-  group_by(CMATYPE) %>% 
-  summarise(rev = sum(rev), n = mean(n)) %>% 
-  rename(place = CMATYPE)
-Fig3 <- bind_rows(Fig3_MTV, Fig3_other)
-Fig3 <- Fig3 %>% 
-  slice(c(2,1,3,5,4,6)) %>% 
-  mutate(count = n/sum(n)) %>% 
-  mutate(rev = rev/sum(rev)) %>% 
-  mutate(ymax_rev = cumsum(rev)) %>% 
-  mutate(ymin_rev = replace_na(lag(ymax_rev,1),0)) %>% 
-  mutate(ymax_count = cumsum(count)) %>% 
-  mutate(ymin_count = replace_na(lag(ymax_count,1),0))
 
-Fig3$place <- factor(Fig3$place, levels = c("Toronto", "Montréal", "Vancouver", "CMA", "CA", "Rural"))
-Fig3col <- c("#2d012d","#59157c" , "#8c6bb1", "#9ebcda","#6c8bb7", "#0c316b")
 
-ggplot(data = Fig3) + 
-  geom_rect(aes(fill=place, ymax=ymax_rev, ymin=ymin_rev, xmax=3, xmin=2), color = "white", size = 1.3, alpha = 0.8) +
-  geom_rect(aes(fill=place, ymax=ymax_count, ymin=ymin_count, xmax=4, xmin=3), color = "white", size = 1.1, alpha = 0.8) +
-  geom_text(aes(x = 2.5, y = (ymin_rev + ymax_rev)/2, label = paste(round(rev*100,0),"%")),color = "white", size = 3.4) + 
-  geom_text(aes(x = 3.5, y = (ymin_count + ymax_count)/2, label = paste(round(count*100,0),"%")),color = "white", size = 3.4) + 
-  geom_text(aes(x = 1.1, y = .83, label = paste("Revenue")) ,size = 3.5) + 
-  geom_text(aes(x = 5.3, y = .8, label = paste("Active Listings")),size = 3.5) + 
-  xlim(c(0, 5.4)) + 
-  theme(aspect.ratio=1, 
-        axis.line=element_blank(),
-        axis.text.x=element_blank(),
-        axis.text.y=element_blank(),
-        axis.ticks=element_blank(),
-        axis.title.x=element_blank(),
-        axis.title.y=element_blank(),
-        legend.text=element_text(size =10),
-        legend.position=c(.9, 0.5),
-        panel.background=element_blank(),
-        panel.border=element_blank(),
-        plot.background=element_blank())+
-  coord_polar(theta = "y")+
-  scale_fill_manual(name = "", values = Fig3col, breaks = c("Toronto", "Montréal", "Vancouver", "CMA", "CA", "Rural"))
+## Figure 3 ####
+
+
+
+
+
+
+
+
 
 #Visual 4 - ggforce
 Fig4 <- Candaa_daily_red4 %>% 
