@@ -1,0 +1,457 @@
+library(ggforce)
+library(gridExtra)
+library(tidyverse)
+library(circlize)
+library(cancensus)
+Sys.setenv(CM_API_KEY = 'CensusMapper_477e49d37fc30f1e4a10d6bf9b1dc12d')
+
+#Visual 1 - Map
+
+#Visual 2 - Growth 
+Fig2 <- Canada_daily %>% 
+  filter(!is.na(CMATYPE), Housing == TRUE) %>% 
+  group_by(Date, CMATYPE) %>% 
+  summarise(Listings = n()) %>% 
+  filter(Date<="2019-01-28")
+
+Fig2col <- c("#59157c" , "#9ebcda","#0c316b")
+
+Fig2 %>% 
+  filter(Date <= "2018-12-31") %>% 
+  ggplot() +
+  geom_line(aes(x = Date, y = Listings/Listings[Date == "2016-09-01"]*100, color = CMATYPE), lwd = 1.8, show.legend = FALSE)+
+  xlab("Date") +
+  ylab("Indexed active daily listings (September 1, 2016 = 100)")+
+  scale_color_manual(name = "Region", values = Fig2col)+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))
+
+Fig2 %>% 
+  filter(Date <= "2018-12-31") %>% 
+  ggplot() +
+  geom_line(aes(x = Date, y = Listings, color = CMATYPE), lwd = 1.8, show.legend = FALSE)+
+  xlab("Date") +
+  ylab("Active daily listings")+
+  scale_color_manual(name = "Region", values = Fig2col)+
+  scale_y_continuous(labels=scales::comma_format())+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))
+
+grid.arrange(a, b, ncol = 2)
+
+#Visual 3 - donut chart
+Fig3_MTV <- Candaa_daily_red4 %>% 
+  ungroup() %>% 
+  filter(CMANAME %in% c("Montréal", "Toronto", "Vancouver")) %>% 
+  group_by(CMANAME, Date) %>%
+  summarise(rev = sum(Price[Status == "R"]), n = n()) %>% 
+  group_by(CMANAME) %>% 
+  summarise(rev = sum(rev), n = mean(n)) %>% 
+  rename(place = CMANAME)
+Fig3_other <- Candaa_daily_red4 %>% 
+  ungroup() %>% 
+  filter(!CMANAME %in% c("Montréal", "Toronto", "Vancouver")) %>% 
+  group_by(CMATYPE, Date) %>%
+  summarise(rev = sum(Price[Status == "R"]), n = n())%>% 
+  group_by(CMATYPE) %>% 
+  summarise(rev = sum(rev), n = mean(n)) %>% 
+  rename(place = CMATYPE)
+Fig3 <- bind_rows(Fig3_MTV, Fig3_other)
+Fig3 <- Fig3 %>% 
+  slice(c(2,1,3,5,4,6)) %>% 
+  mutate(count = n/sum(n)) %>% 
+  mutate(rev = rev/sum(rev)) %>% 
+  mutate(ymax_rev = cumsum(rev)) %>% 
+  mutate(ymin_rev = replace_na(lag(ymax_rev,1),0)) %>% 
+  mutate(ymax_count = cumsum(count)) %>% 
+  mutate(ymin_count = replace_na(lag(ymax_count,1),0))
+
+Fig3$place <- factor(Fig3$place, levels = c("Toronto", "Montréal", "Vancouver", "CMA", "CA", "Rural"))
+Fig3col <- c("#2d012d","#59157c" , "#8c6bb1", "#9ebcda","#6c8bb7", "#0c316b")
+
+ggplot(data = Fig3) + 
+  geom_rect(aes(fill=place, ymax=ymax_rev, ymin=ymin_rev, xmax=3, xmin=2), color = "white", size = 1.3, alpha = 0.8) +
+  geom_rect(aes(fill=place, ymax=ymax_count, ymin=ymin_count, xmax=4, xmin=3), color = "white", size = 1.1, alpha = 0.8) +
+  geom_text(aes(x = 2.5, y = (ymin_rev + ymax_rev)/2, label = paste(round(rev*100,0),"%")),color = "white", size = 3.4) + 
+  geom_text(aes(x = 3.5, y = (ymin_count + ymax_count)/2, label = paste(round(count*100,0),"%")),color = "white", size = 3.4) + 
+  geom_text(aes(x = 1.1, y = .83, label = paste("Revenue")) ,size = 3.5) + 
+  geom_text(aes(x = 5.3, y = .8, label = paste("Active Listings")),size = 3.5) + 
+  xlim(c(0, 5.4)) + 
+  theme(aspect.ratio=1, 
+        axis.line=element_blank(),
+        axis.text.x=element_blank(),
+        axis.text.y=element_blank(),
+        axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        legend.text=element_text(size =10),
+        legend.position=c(.9, 0.5),
+        panel.background=element_blank(),
+        panel.border=element_blank(),
+        plot.background=element_blank())+
+  coord_polar(theta = "y")+
+  scale_fill_manual(name = "", values = Fig3col, breaks = c("Toronto", "Montréal", "Vancouver", "CMA", "CA", "Rural"))
+
+#Visual 4 - ggforce
+Fig4 <- Candaa_daily_red4 %>% 
+  filter(CMATYPE %in% c("CMA")) %>% 
+  group_by(CMANAME, CTUID, PRNAME) %>% 
+  summarise(rev = sum(Price[Status =="R"]), CT_pop = mean(CT_pop), rev_dens = rev/CT_pop, CMA_pop = mean(CMA_pop)) %>% 
+  group_by(CMANAME, PRNAME) %>%
+  mutate(percrev = rev/sum(rev)) %>% 
+  mutate(CTperc_pop = CT_pop/sum(CT_pop, na.rm = TRUE)) %>% 
+  arrange(CMANAME, -rev_dens) %>% 
+  mutate(new = cumsum(percrev), cumCTperc_pop = cumsum(CTperc_pop)) %>% 
+  mutate(totalrev = sum(rev)) %>% 
+  filter(cumCTperc_pop >= 0.1) %>% 
+  summarize(cum_rev = first(new), CANrev = mean(totalrev)/1405932782, CMA_pop = mean(CMA_pop)) %>% 
+  mutate(Region = ifelse(PRNAME %in% c("British Columbia / Colombie-Britannique"), "British Columbia",
+                         ifelse(PRNAME %in% c("Ontario"), "Ontario", 
+                                ifelse(CMANAME %in% c("Alma", "Baie-Comeau", "Cowansville", "Dolbeau-Mistassini", "Drummondville",
+                                                      "Granby", "Joliette", "Lachute", "Matane", "Montréal", "Québec", "Rouyn-Noranda", "Rimouski",
+                                                      "Rivière-du-Loup", "Saguenay", "Saint-Georges", "Saint-Hyacinthe", "Sainte-Marie", "Salaberry-de-Valleyfield",
+                                                      "Sept-Îles", "Shawinigan", "Sorel-Tracey", "Sherbrooke", "Thetford Mines", "Trois-Rivières",
+                                                      "Val d'Or", "Victoriaville"), "Québec",
+                                       ifelse(PRNAME %in% c("Alberta", "Saskatchewan", "Manitoba"), "Prairies","Atlantic Canada"))))) %>% 
+  mutate(Region2 = ifelse(PRNAME %in% c("British Columbia / Colombie-Britannique"), "British Columbia",
+                          ifelse(CMANAME %in% c("Alma", "Baie-Comeau", "Cowansville", "Dolbeau-Mistassini", "Drummondville",
+                                                "Granby", "Joliette", "Lachute", "Matane", "Montréal", "Québec", "Rouyn-Noranda", "Rimouski",
+                                                "Rivière-du-Loup", "Saguenay", "Saint-Georges", "Saint-Hyacinthe", "Sainte-Marie", "Salaberry-de-Valleyfield",
+                                                "Sept-Îles", "Shawinigan", "Sorel-Tracey", "Sherbrooke", "Thetford Mines", "Trois-Rivières",
+                                                "Val d'Or", "Victoriaville"), "Québec", "Other")))
+
+Fig4cola <- c("#8c6bb1","#9ebcda")
+Fig4col <- c("#8c6bb1", "grey10", "#9ebcda")
+
+ggplot(Fig4) +
+  geom_mark_hull(aes(x = CANrev, 
+                     y = cum_rev, 
+                     filter = Region == "Québec" | Region == "British Columbia",
+                     label = Region, 
+                     fill = Region),
+                 alpha = 0.25,
+                 color = "grey90",
+                 radius = unit(5, "mm"),
+                 concavity = 2,
+                 expand = unit(5, "mm"),
+                 label.fontsize = 8)+
+  scale_fill_manual(name = "Region", values = Fig3cola, guide = FALSE)+
+  geom_point(aes(x = CANrev, 
+                 y = cum_rev, 
+                 size = CMA_pop,
+                 color = Region2),
+             alpha = 0.9)+
+  geom_smooth(aes(x = CANrev, y = cum_rev),
+              method = "lm", 
+              se = FALSE, 
+              color = "black")+
+  scale_x_log10(labels = scales::percent_format(accuracy = .1))+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1))+
+  scale_size_continuous(name = "Population", 
+                        range = c(1,10), 
+                        labels = scales::comma_format())+
+  scale_color_manual(name = "Region", values = Fig3col, labels = c("British Columbia", "Other", "Québec"))+
+  xlab("Percentage of Canada's revenue (log)")+
+  ylab("Maximum percentage of CMA revenue earned by \ncensus tracts housing 10% of CMA population")+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))
+
+#Visual 5 - seasonality
+#see SeasonalAdjustment file
+
+#Visual 6 - host percentiles
+Fig6_CMA <- Candaa_daily_red4 %>% #determining least/most concentrated cmas for the lines
+  filter(CMATYPE == "CMA", Status == "R") %>% 
+  group_by(CMANAME, Host_ID) %>% 
+  summarise(rev = sum(Price)) %>% 
+  group_by(CMANAME) %>% 
+  summarise(one = quantile(rev, c(0.99)), oneperc = sum(rev[rev>one]), `1%` = oneperc/sum(rev),
+            five = quantile(rev, c(0.95)), fiveperc = sum(rev[rev>five]), `5%` = fiveperc/sum(rev), 
+            ten = quantile(rev, c(0.90)), tenperc = sum(rev[rev>ten]), `10%` = tenperc/sum(rev)) %>% 
+  select(CMANAME, `1%`, `5%`, `10%`) %>% 
+  gather(`1%`, `5%`, `10%`, key = "percentile", value = "value") %>% 
+  group_by(percentile) %>% 
+  summarise(min = min(value), max = max(value), citymin = CMANAME[which.min(value)], citymax = CMANAME[which.max(value)]) %>% 
+  mutate(CMATYPE = "CMA")
+
+Fig6 <- Candaa_daily_red4 %>% # creating percentiles for CMATYPE and joining with least/most cmas above
+  group_by(CMATYPE, Host_ID) %>% 
+  summarise(rev = sum(Price)) %>% 
+  group_by(CMATYPE) %>% 
+  summarise(one = quantile(rev, c(0.99)), oneperc = sum(rev[rev>one]), `1%` = oneperc/sum(rev),
+            five = quantile(rev, c(0.95)), fiveperc = sum(rev[rev>five]), `5%` = fiveperc/sum(rev), 
+            ten = quantile(rev, c(0.90)), tenperc = sum(rev[rev>ten]), `10%` = tenperc/sum(rev)) %>%
+  select(CMATYPE, `1%`, `5%`, `10%`) %>% 
+  gather(`1%`, `5%`, `10%`, key = "percentile", value = "value") %>% 
+  left_join(Fig6_CMA)
+Fig6$percentile <- factor(Fig6$percentile, levels = c('1%', '5%', '10%'))
+
+Fig6_CMA2 <- Candaa_daily_red4 %>% # data for small side charts 
+  filter(CMATYPE == "CMA", Status == "R") %>% 
+  group_by(CMANAME, Host_ID) %>% 
+  summarise(rev = sum(Price)) %>% 
+  group_by(CMANAME) %>% 
+  summarise(one = quantile(rev, c(0.99)), oneperc = sum(rev[rev>one]), `1%` = oneperc/sum(rev),
+            five = quantile(rev, c(0.95)), fiveperc = sum(rev[rev>five]), `5%` = fiveperc/sum(rev), 
+            ten = quantile(rev, c(0.90)), tenperc = sum(rev[rev>ten]), `10%` = tenperc/sum(rev)) %>% 
+  select(CMANAME, `1%`, `5%`, `10%`) %>% 
+  gather(`1%`, `5%`, `10%`, key = "percentile", value = "value") %>% 
+  filter(CMANAME %in% c("Montréal", "Abbotsford - Mission"))
+Fig6_CMA2$percentile <- factor(Fig6_CMA2$percentile, levels = c('1%', '5%', '10%'))
+
+Fig6col <- c("#59157c", "#9ebcda","#0c316b","#59157c", "#9ebcda","#0c316b", "#59157c", "#9ebcda","#0c316b")
+
+num2 <- ggplot(data = Fig6_CMA2)+ #side plot
+  geom_bar(mapping = aes(fill = percentile, x = percentile, y = value), stat = "identity", alpha = 0.65)+
+  scale_fill_manual(values = Fig6col)+
+  labs(x = "", y = "Percent of Revenue")+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))+
+  theme(strip.background =element_rect(fill="white"))+
+  theme(strip.text = element_text(colour = 'grey20'))+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1))+
+  facet_wrap(~CMANAME)
+
+num1 <- ggplot(data = Fig6)+ #main plot
+  geom_bar(mapping = aes(fill = percentile, x = CMATYPE, y = value), stat = "identity", position = "dodge", show.legend = FALSE, alpha = 0.65) +
+  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), lineend = "round", position = position_nudge(x = -0.3), 
+               data = . %>% filter(percentile == "1%"))+
+  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), position = position_nudge(x = 0), 
+               data = . %>% filter(percentile == "5%"))+
+  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), position = position_nudge(x = 0.3), 
+               data = . %>% filter(percentile == "10%"))+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))+
+  labs(x = "", y = "Percent of Revenue")+
+  scale_fill_manual(values = Fig6col)+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1))
+
+grid.arrange(num1, num2, ncol = 2)
+library(gridExtra)
+#Visual 7 - multilistngs
+arc <- read_csv("data/arc.csv") #load matrix
+arc <- arc %>% 
+  mutate(id = row_number())
+arc <- as.data.frame(arc)
+arc<- data.frame(arc[,-3], row.names = arc[,3])
+arc <- arc %>%
+  filter(to %in% c("Toronto", "Vancouver", "Montréal", "Victoria", "Ottawa - Gatineau", "Québec", "Calgary",
+                   "Canmore", "Kelowna", "St. Catharines - Niagara", "Hamilton", "Edmonton", "Barrie",
+                   "Kitcehener - Cambridge - Waterloo", "Sherbrooke", "London", "Nanaimo", "Collingwood",
+                   "Winnipeg", "Halifax")) %>% 
+  filter(from %in% c("Toronto", "Vancouver", "Montréal", "Victoria", "Ottawa - Gatineau", "Québec", "Calgary",
+                     "Canmore", "Kelowna", "St. Catharines - Niagara", "Hamilton", "Edmonton", "Barrie",
+                     "Kitcehener - Cambridge - Waterloo", "Sherbrooke", "London", "Nanaimo", "Collingwood",
+                     "Winnipeg", "Halifax"))
+arc <- arc %>% 
+  group_by(to, from) %>% 
+  summarise(n())
+order <- c("Nanaimo", "Victoria", "Vancouver", "Kelowna", #order to draw the cities in (by longitude here)
+           "Canmore", "Calgary", "Edmonton", "Winnipeg", "London", 
+           "Collingwood", "Hamilton", "Barrie", "Toronto", 
+           "St. Catharines - Niagara", "Ottawa - Gatineau", 
+           "Montréal", "Sherbrooke", "Québec", "Halifax")
+grid.col <- rainbow(19) #color of circle border 
+arc_col <- read_csv("arc_color.csv") #load csv with average colors
+col <- arc_col$col_avg #take average color and turn it into a vector
+
+chordDiagram(arc, annotationTrack = "grid", preAllocateTracks = 1, order = order, grid.col = grid.col, col = col)
+circos.trackPlotRegion(track.index = 1, panel.fun = function (x, y) {
+  xlim = get.cell.meta.data("xlim")
+  ylim = get.cell.meta.data("ylim")
+  sector.name = get.cell.meta.data("sector.index")
+  circos.text(mean(xlim), ylim[1]+.1, sector.name, facing = "clockwise", niceFacing = TRUE, adj = c(-0.15, .5), cex = 1.2)
+  circos.axis(h = "top", labels.cex = 0.4, major.tick.percentage = 0.2, sector.index = sector.name, track.index = 2)
+}, bg.border = NA)
+
+# arc diagram with self links
+test2 <- Canada_daily %>% #number of ML per Host_ID per city 
+  filter(Date == "2018-04-30", ML == TRUE, Housing == TRUE, Listing_Type == "Entire home/apt",
+         CMANAME %in% c("Toronto", "Vancouver", "Montréal", "Victoria", 
+                        "Ottawa - Gatineau", "Québec", "Calgary",
+                        "Canmore", "Kelowna", "St. Catharines - Niagara", "Hamilton", "Edmonton", "Barrie",
+                        "Kitcehener - Cambridge - Waterloo", "Sherbrooke", "London", "Nanaimo", "Collingwood",
+                        "Winnipeg", "Halifax")) %>% 
+  group_by(Host_ID, CMANAME) %>% 
+  summarise(n())
+
+test3 <- Canada_daily %>% 
+  filter(Date == "2018-04-30", ML == TRUE, Housing == TRUE, Listing_Type == "Entire home/apt",
+         CMANAME %in% c("Toronto", "Vancouver", "Montréal", "Victoria", 
+                        "Ottawa - Gatineau", "Québec", "Calgary",
+                        "Canmore", "Kelowna", "St. Catharines - Niagara", "Hamilton", "Edmonton", "Barrie",
+                        "Kitcehener - Cambridge - Waterloo", "Sherbrooke", "London", "Nanaimo", "Collingwood",
+                        "Winnipeg", "Halifax")) %>% 
+  group_by(Host_ID, CMANAME) %>% 
+  summarise(n()) %>% #number of ML per host
+  group_by(Host_ID) %>% 
+  summarise(n = n(), m = sum(`n()`)) %>% #n = number of cities per host, m = total number of multilistings
+  filter(n == 1) %>% #filter to only hosts with ML within one city
+  left_join(test2, by = "Host_ID") #join with test 2 to get CMANAME again (also reincludes total ML per host (n()) but doesn't need to)
+
+test4 <- test3 %>% 
+  group_by(CMANAME) %>% 
+  summarise(sum = sum(m)) %>% #sum total ML per city
+  rename(to = CMANAME, `n()` = sum) %>% #rename columns so that they match the convention above and can be joined to cross-city ML
+  mutate(from = to) %>% 
+  select(to, from, `n()`)
+
+arc3 <- bind_rows(arc2, test4)
+arc_col_self <- read_csv("arc_color_self.csv")
+col2 <- arc_col_self$col_avg
+
+chordDiagram(arc3, annotationTrack = "grid", preAllocateTracks = 1, order = order, grid.col = grid.col, col = col2)
+circos.trackPlotRegion(track.index = 1, panel.fun = function (x, y) {
+  xlim = get.cell.meta.data("xlim")
+  ylim = get.cell.meta.data("ylim")
+  sector.name = get.cell.meta.data("sector.index")
+  circos.text(mean(xlim), ylim[1]+.1, sector.name, facing = "clockwise", niceFacing = TRUE, adj = c(-0.15, .5), cex = 1.2)
+  circos.axis(h = "top", labels.cex = 0.4, major.tick.percentage = 0.2, sector.index = sector.name, track.index = 2)
+}, bg.border = NA)
+
+#Visual 8 - percent revenue entire homes
+Fig8 <- Candaa_daily_red4 %>% 
+  filter(CMATYPE =="CMA" | CMATYPE =="CA") %>% 
+  group_by(CMANAME, Property_ID, Listing_Type, CMA_pop) %>% 
+  summarise(n = n(), rev = sum(Price[Status == "R"])) %>% 
+  group_by(CMANAME) %>% 
+  summarise(sum(rev), sum(rev[Listing_Type == "Entire home/apt"]), Population = mean(CMA_pop)) %>% 
+  mutate(percEH = `sum(rev[Listing_Type == "Entire home/apt"])`/`sum(rev)`, revCAD = `sum(rev)`*1.2957)
+
+ggplot(data = Fig8, mapping = aes(x = revCAD, y = percEH)) +
+  geom_point(aes(size = Population),color = "#0c316b", alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "black")+
+  labs(x = "Revenue (log)", y = "Percentage of listings\nthat are entire homes")+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))+
+  scale_y_continuous(labels = scales::percent_format())+
+  scale_x_log10(labels = scales::dollar_format())+
+  scale_size_continuous(range = c(1,15), labels = scales::comma_format())
+
+#Visual 9 - percent of rev from EH vs percent of rev from  FREH
+Canada_FREH <- read_csv("data/Canada_FREH.csv")
+
+FREH_2018 <- Canada_FREH %>% 
+  filter(Date == "2018-12-31", FREH == 1)
+
+Fig9 <- Candaa_daily_red4 %>%
+  group_by(Property_ID, Listing_Type, CMANAME, CMATYPE, CMA_pop) %>% 
+  summarise(rev = sum(Price[Status == "R"])) %>% 
+  left_join(FREH_2018[,c(1,3)], by = "Property_ID") %>% 
+  group_by(CMANAME, CMATYPE, CMA_pop) %>% 
+  summarise(`Entire homes` = sum(rev[Listing_Type == "Entire home/apt"])/sum(rev), 
+            `Frequently-rented entire homes` = sum(rev[FREH == 1], na.rm = TRUE)/sum(rev, na.rm = TRUE)) %>% 
+  rename(Region = CMATYPE)
+
+Fig9col <- c("#59157c", "#9ebcda")
+
+Fig9 %>% 
+  filter(CMA_pop>25000) %>% 
+  ggplot()+
+  geom_point(aes(x = `Entire homes`, y = `Frequently-rented entire homes`, color = Region, size = CMA_pop), alpha = 0.5)+
+  scale_color_manual(values = Fig9col)+
+  geom_smooth(aes(x = `Entire homes`, y = `Frequently-rented entire homes`), method = "lm", se = FALSE, color = "black")+
+  scale_size_continuous(name = "Population", range = c(1,20),labels = scales::comma_format())+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1))+
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1))+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))+
+  xlab("Percentage of revenue derived from entire-home listings")+
+  ylab("Percentage of revenue derived from FREH listings")
+
+#Visual 10 - map
+
+#Visual 11 - vacancy rates
+vacrates <- read.delim("data/fig10.txt", header = TRUE, fileEncoding = "UTF-16")
+Canada_FREH <- read_csv("data/Canada_FREH.csv")
+Canada_FREH <- Canada_FREH %>% 
+  left_join(Canada_property[,c(1,5,19,20,21,22,24,25,26)])
+
+cd <- get_census("CA16", regions = list(C=c("01")), level = "DA")
+cd$GeoUID <- as.numeric(cd$GeoUID)
+cma <- get_census("CA16", regions = list(C=c("01")), level = "CMA")
+
+fig11 <- Canada_FREH %>%
+  ungroup() %>% 
+  filter(Date == "2018-12-31") %>% 
+  group_by(winner,CMANAME, PRNAME, CMATYPE) %>% 
+  summarise(FREH = sum(FREH)) %>% 
+  full_join(cd[,c(1,5:6)], by = c("winner" = "GeoUID")) %>% 
+  group_by(CMANAME, PRNAME, CMATYPE) %>% 
+  summarise(FREH = sum(FREH),  Dwellings = sum(Dwellings), Population = sum(Population)) %>% 
+  mutate(percFREH = FREH/Dwellings) %>% 
+  left_join(vacrates[,c(2,5,6)], by = "CMANAME") %>% 
+  filter(e != "d") %>%
+  rename(vacrate = e) %>% 
+  mutate(ratio = percFREH/vacrate) %>% 
+  mutate(Region = ifelse(PRNAME %in% c("British Columbia / Colombie-Britannique"), "British Columbia",
+                         ifelse(PRNAME %in% c("Ontario"), "Ontario", 
+                                ifelse(CMANAME %in% c("Alma", "Baie-Comeau", "Cowansville", "Dolbeau-Mistassini", "Drummondville",
+                                                      "Granby", "Joliette", "Lachute", "Matane", "Montréal", "Québec", "Rouyn-Noranda", "Rimouski",
+                                                      "Rivière-du-Loup", "Saguenay", "Saint-Georges", "Saint-Hyacinthe", "Sainte-Marie", "Salaberry-de-Valleyfield",
+                                                      "Sept-Îles", "Shawinigan", "Sorel-Tracey", "Sherbrooke", "Thetford Mines", "Trois-Rivières",
+                                                      "Val d'Or", "Victoriaville"), "Quebec",
+                                       ifelse(PRNAME %in% c("Alberta", "Saskatchewan", "Manitoba"), "Prairies","Atlantic Canada")))))
+
+Fig11col <- c("#0c316b", "#8c6bb1", "grey80", "#2d012d", "#9ebcda")
+
+ggplot(data = fig11, mapping = aes(x = percFREH, y = vacrate))+
+  geom_jitter(aes(size = Population, color = Region), alpha = .5)+
+  scale_color_manual(values = Fig11col, labels = c("Atlantic Provinces", "British Columbia",
+                                                   "Ontario", "Prairies", "Québec"))+
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  scale_size_continuous(range = c(1,20), labels = scales::comma_format())+
+  scale_y_continuous(limits=c(0,.2), labels = scales::percent_format(accuracy = 1))+
+  scale_x_log10(labels = scales::percent_format(accuracy = .1))+
+  xlab("Percentage of housing units that are FREH listings (log)")+
+  ylab("Vacancy rate")+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))
