@@ -262,11 +262,13 @@ figure_5 <-
   scale_y_continuous(labels = scales::percent_format(accuracy = 1))
 
 #Visual 6 - host percentiles
-Fig6_CMA <- Candaa_daily_red4 %>% #determining least/most concentrated cmas for the lines
+figure_6_data_lines <- 
+  Canada_daily %>% 
+  filter(Housing == TRUE, Date >= "2018-01-01", Date <= "2018-12-31",
+         !is.na(CMATYPE)) %>%
   filter(CMATYPE == "CMA", Status == "R") %>% 
   group_by(CMANAME, Host_ID) %>% 
   summarise(rev = sum(Price)) %>% 
-  group_by(CMANAME) %>% 
   summarise(one = quantile(rev, c(0.99)), oneperc = sum(rev[rev>one]), `1%` = oneperc/sum(rev),
             five = quantile(rev, c(0.95)), fiveperc = sum(rev[rev>five]), `5%` = fiveperc/sum(rev), 
             ten = quantile(rev, c(0.90)), tenperc = sum(rev[rev>ten]), `10%` = tenperc/sum(rev)) %>% 
@@ -276,57 +278,51 @@ Fig6_CMA <- Candaa_daily_red4 %>% #determining least/most concentrated cmas for 
   summarise(min = min(value), max = max(value), citymin = CMANAME[which.min(value)], citymax = CMANAME[which.max(value)]) %>% 
   mutate(CMATYPE = "CMA")
 
-Fig6 <- Candaa_daily_red4 %>% # creating percentiles for CMATYPE and joining with least/most cmas above
+figure_6_data_left <- Canada_daily %>% 
+  filter(Housing == TRUE, Date >= "2018-01-01", Date <= "2018-12-31",
+         !is.na(CMATYPE)) %>%
   group_by(CMATYPE, Host_ID) %>% 
   summarise(rev = sum(Price)) %>% 
-  group_by(CMATYPE) %>% 
   summarise(one = quantile(rev, c(0.99)), oneperc = sum(rev[rev>one]), `1%` = oneperc/sum(rev),
             five = quantile(rev, c(0.95)), fiveperc = sum(rev[rev>five]), `5%` = fiveperc/sum(rev), 
             ten = quantile(rev, c(0.90)), tenperc = sum(rev[rev>ten]), `10%` = tenperc/sum(rev)) %>%
   select(CMATYPE, `1%`, `5%`, `10%`) %>% 
   gather(`1%`, `5%`, `10%`, key = "percentile", value = "value") %>% 
-  left_join(Fig6_CMA)
-Fig6$percentile <- factor(Fig6$percentile, levels = c('1%', '5%', '10%'))
+  left_join(figure_6_data_lines) %>% 
+  mutate(percentile = factor(percentile, levels = c('1%', '5%', '10%')))
 
-Fig6_CMA2 <- Candaa_daily_red4 %>% # data for small side charts 
-  filter(CMATYPE == "CMA", Status == "R") %>% 
+
+figure_6_data_right <- Canada_daily %>%
+  filter(Housing == TRUE, Date >= "2018-01-01", Date <= "2018-12-31",
+         !is.na(CMATYPE)) %>%
+  filter(Status == "R", CMANAME %in% c("Montréal", "Abbotsford - Mission")) %>% 
   group_by(CMANAME, Host_ID) %>% 
   summarise(rev = sum(Price)) %>% 
-  group_by(CMANAME) %>% 
   summarise(one = quantile(rev, c(0.99)), oneperc = sum(rev[rev>one]), `1%` = oneperc/sum(rev),
             five = quantile(rev, c(0.95)), fiveperc = sum(rev[rev>five]), `5%` = fiveperc/sum(rev), 
             ten = quantile(rev, c(0.90)), tenperc = sum(rev[rev>ten]), `10%` = tenperc/sum(rev)) %>% 
   select(CMANAME, `1%`, `5%`, `10%`) %>% 
   gather(`1%`, `5%`, `10%`, key = "percentile", value = "value") %>% 
-  filter(CMANAME %in% c("Montréal", "Abbotsford - Mission"))
-Fig6_CMA2$percentile <- factor(Fig6_CMA2$percentile, levels = c('1%', '5%', '10%'))
+  mutate(percentile = factor(percentile, levels = c('1%', '5%', '10%')))
 
-Fig6col <- c("#59157c", "#9ebcda","#0c316b","#59157c", "#9ebcda","#0c316b", "#59157c", "#9ebcda","#0c316b")
+figure_6_col <- c("#59157c", "#9ebcda","#0c316b","#59157c", "#9ebcda",
+                  "#0c316b", "#59157c", "#9ebcda","#0c316b")
 
-num2 <- ggplot(data = Fig6_CMA2)+ #side plot
-  geom_bar(mapping = aes(fill = percentile, x = percentile, y = value), stat = "identity", alpha = 0.65)+
-  scale_fill_manual(values = Fig6col)+
-  labs(x = "", y = "Percent of Revenue")+
-  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
-        text=element_text(size=10),
-        axis.text = element_text(size = 10),
-        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
-        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
-        legend.key = element_blank(),
-        panel.background=element_blank(),
-        axis.line = element_line(size = .09, color = "grey10"))+
-  theme(strip.background =element_rect(fill="white"))+
-  theme(strip.text = element_text(colour = 'grey20'))+
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1))+
-  facet_wrap(~CMANAME)
-
-num1 <- ggplot(data = Fig6)+ #main plot
-  geom_bar(mapping = aes(fill = percentile, x = CMATYPE, y = value), stat = "identity", position = "dodge", show.legend = FALSE, alpha = 0.65) +
-  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), lineend = "round", position = position_nudge(x = -0.3), 
+figure_6_left <- ggplot(data = figure_6_data_left) +
+  geom_bar(mapping = aes(fill = percentile, x = CMATYPE, y = value), 
+           stat = "identity", position = "dodge", show.legend = FALSE, alpha = 0.65) +
+  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), 
+               lineend = "round", arrow = arrow(angle = 90, type = "closed",
+                                                unit(0.1, "inches"), ends = "both"), 
+               position = position_nudge(x = -0.3), 
                data = . %>% filter(percentile == "1%"))+
-  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), position = position_nudge(x = 0), 
+  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), 
+               arrow = arrow(angle = 90, type = "closed", unit(0.1, "inches"), 
+                             ends = "both"), position = position_nudge(x = 0), 
                data = . %>% filter(percentile == "5%"))+
-  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), position = position_nudge(x = 0.3), 
+  geom_segment(mapping = aes(x = CMATYPE, xend = CMATYPE, y = max, yend = min), 
+               arrow = arrow(angle = 90, type = "closed", unit(0.1, "inches"), 
+                             ends = "both"), position = position_nudge(x = 0.3), 
                data = . %>% filter(percentile == "10%"))+
   theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
         text=element_text(size=10),
@@ -337,11 +333,26 @@ num1 <- ggplot(data = Fig6)+ #main plot
         panel.background=element_blank(),
         axis.line = element_line(size = .09, color = "grey10"))+
   labs(x = "", y = "Percent of Revenue")+
-  scale_fill_manual(values = Fig6col)+
+  scale_fill_manual(values = figure_6_col)+
   scale_y_continuous(labels = scales::percent_format(accuracy = 1))
 
-grid.arrange(num1, num2, ncol = 2)
-library(gridExtra)
+figure_6_right <- ggplot(data = figure_6_data_right)+ #side plot
+  geom_bar(mapping = aes(fill = percentile, x = CMANAME, y = value), 
+           stat = "identity", position = "dodge", alpha = 0.65)+
+  scale_fill_manual(values = figure_6_col, name = "Percentile")+
+  labs(x = "", y = "Percent of Revenue")+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1))
+
+grid.arrange(figure_6_left, figure_6_right, ncol = 2)
+
 #Visual 7 - multilistngs
 arc <- read_csv("data/arc.csv") #load matrix
 arc <- arc %>% 
