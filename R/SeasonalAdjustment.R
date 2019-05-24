@@ -11,10 +11,17 @@ Canada_daily_seas <- Canada_daily %>%
 
 ## add Atlantic / other column
 Canada_daily_seas <- Canada_daily_seas %>% 
-  mutate(Region = ifelse(PRNAME %in% c("British Columbia / Colombie-Britannique"), "British Columbia",
-                         ifelse(PRNAME %in% c("Ontario"), "Ontario", 
-                                ifelse(PRNAME %in% c("Quebec / Qu\xe9bec"), "Québec",
-                                       ifelse(PRNAME %in% c("Alberta", "Saskatchewan", "Manitoba"), "Prairies","Atlantic")))))
+  mutate(Region = case_when(
+    PRNAME %in% c("British Columbia / Colombie-Britannique") ~ "British Columbia",
+    PRNAME %in% c("Ontario") ~ "Ontario", 
+    PRNAME %in% c("Quebec / Qu\xe9bec") ~ "Québec",
+    PRNAME %in% c("Alberta", "Saskatchewan", "Manitoba") ~ "Prairies",
+    TRUE ~ "Atlantic"))
+
+
+Canada_daily_seas %>% 
+  group_by(Region) %>% 
+  mutate(seasonal = decompose(ts, "multiplicative"))
 
 ## define function 
 seasonal_adjust<- function(region, cma) {
@@ -25,13 +32,14 @@ seasonal_adjust<- function(region, cma) {
     group_by(month) %>% 
     summarise(rev = sum(Price[Status == "R"]))
   ts <- ts %>% 
-    filter(month<= "Dec 2018" & 
-             month>= "Jan 2017") %>% 
     ts(frequency = 12)
   ts <- ts[,2]
   decompose_ts <- decompose(ts, "multiplicative")
   decompose_ts
 }
+
+
+
 
 ## Atlantic
 atlantic <- seasonal_adjust(region = c("Atlantic"), cma = c("CMA", "CA", "Rural"))
@@ -49,49 +57,19 @@ ontario <- seasonal_adjust(region = c("Ontario"), cma = c("CMA", "CA", "Rural"))
 quebec <- seasonal_adjust(region = c("Québec"), cma = c("CMA", "CA", "Rural"))
 
 ## Visual
-atlanticviz <- atlantic$seasonal[1:12]/12
-month <- c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
-           "Sep", "Oct", "Nov", "Dec")
-atlanticviz2 <- as.data.frame(month, atlanticviz)
-atlanticviz <- atlanticviz2 %>% 
-  mutate(percent = atlanticviz) %>%
-  mutate(Region = "Atlantic Provinces")
-rm(atlanticviz2)
 
-ontarioviz <- ontario$seasonal[1:12]/12
-ontarioviz2 <- as.data.frame(month, ontarioviz)
-ontarioviz <- ontarioviz2 %>% 
-  mutate(percent = ontarioviz) %>%
-  mutate(Region = "Ontario")
-rm(ontarioviz2)
+figure_5_data <- 
+  map2(list(atlantic, quebec, ontario, prairies, bc),
+     c("Atlantic Provinces", "Québec", "Ontario", "Prairies", "British Columbia"),
+     ~as_tibble(
+       month = factor(c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
+                          "Sep", "Oct", "Nov", "Dec"),
+                      levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+                                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")),
+                percent = .x$seasonal[1:12]/12,
+                Region = .y)) %>% 
+       bind_rows()
 
-prairiesviz <- prairies$seasonal[1:12]/12
-prairiesviz2 <- as.data.frame(month, prairiesviz)
-prairiesviz <- prairiesviz2 %>% 
-  mutate(percent = prairiesviz) %>%
-  mutate(Region = "Prairies")
-rm(prairiesviz2)
-
-bcviz <- bc$seasonal[1:12]/12
-bcviz2 <- as.data.frame(month, bcviz)
-bcviz <- bcviz2 %>% 
-  mutate(percent = bcviz) %>%
-  mutate(Region = "British Columbia")
-rm(bcviz2)
-
-quebecviz <- quebec$seasonal[1:12]/12
-quebecviz2 <- as.data.frame(month, quebecviz)
-quebecviz <- quebecviz2 %>% 
-  mutate(percent = quebecviz) %>%
-  mutate(Region = "Québec")
-rm(quebecviz2)
-
-
-atlanticviz <- rbind(atlanticviz, bcviz, prairiesviz, quebecviz, ontarioviz)
-atlanticviz$month <- factor(atlanticviz$month, levels = c("Jan", "Feb", "Mar", 
-                                                          "Apr", "May", "Jun", 
-                                                          "Jul", "Aug", "Sep", 
-                                                          "Oct", "Nov", "Dec"))
 
 
 
