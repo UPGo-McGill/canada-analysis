@@ -214,7 +214,52 @@ rm(figure_4_data, figure_4_hull_col, figure_4_point_col)
 
 
 #Visual 5 - seasonality
-#see SeasonalAdjustment file
+
+figure_5_data <- Canada_daily %>% 
+  ungroup() %>% 
+  filter(Housing == TRUE, 
+         !is.na(CMATYPE), 
+         Date <="2018-12-31", 
+         Date >= "2017-01-01") %>% 
+  mutate(Region = case_when(
+    PRNAME %in% c("British Columbia / Colombie-Britannique") ~ "British Columbia",
+    PRNAME %in% c("Ontario") ~ "Ontario", 
+    PRNAME %in% c("Quebec / Qu\xe9bec") ~ "Québec",
+    PRNAME %in% c("Alberta", "Saskatchewan", "Manitoba") ~ "Prairies",
+    TRUE ~ "Atlantic")) %>% 
+  mutate(yearmonth = as.yearmon(Date)) %>% 
+  group_by(Region, yearmonth) %>% 
+  summarize(rev = sum(Price[Status == "R"])) %>% 
+  mutate(month = lubridate::month(yearmonth, label = TRUE)) %>% 
+  group_by(Region) %>% 
+  mutate(seasonality = as.vector(decompose(ts(rev, frequency = 12), "multiplicative")$seasonal)/12) %>% 
+  group_by(Region, month, seasonality) %>% 
+  summarise() %>% 
+  ungroup()
+
+figure_5_col <- c("#0c316b", "#8c6bb1", "grey80", "#2d012d", "#9ebcda")
+
+figure_5 <- 
+  ggplot()+
+  geom_line(data = figure_5_data,
+            mapping = aes(x = month, 
+                          y = seasonality, 
+                          color = Region, 
+                          group = Region), lwd = 1.8, alpha = 0.8)+
+  theme(panel.grid.major.x = element_line(size = 0.05, color = "grey80"),
+        text=element_text(size=10),
+        axis.text = element_text(size = 10),
+        panel.grid.major.y = element_line(size = 0.05, color = "grey80"),
+        panel.grid.minor.y = element_line(size = 0.025, color = "grey80"),
+        legend.key = element_blank(),
+        legend.position = "bottom",
+        legend.justification = "center",
+        panel.background=element_blank(),
+        axis.line = element_line(size = .09, color = "grey10"))+
+  xlab("Month")+
+  ylab("Percentage of revenue")+
+  scale_color_manual(name = "", values = figure_5_col)+
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1))
 
 #Visual 6 - host percentiles
 Fig6_CMA <- Candaa_daily_red4 %>% #determining least/most concentrated cmas for the lines
